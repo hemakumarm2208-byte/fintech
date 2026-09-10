@@ -1,16 +1,15 @@
 import { initializeApp } from "firebase/app";
-
 import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, limit } from "firebase/firestore";
 
-// உனது Firebase Config (Already inserted!)
+// Firebase Config (.env file la irundhu vருдhu)
 const firebaseConfig = {
-  apiKey: "AIzaSyD8cKLno1Diksa2rCi8knljbiJcgD2TiR0",
-  authDomain: "sentinelaa-1696c.firebaseapp.com",
-  projectId: "sentinelaa-1696c",
-  storageBucket: "sentinelaa-1696c.firebasestorage.app",
-  messagingSenderId: "515655467889",
-  appId: "1:515655467889:web:84b9b7f39cd8a2e6f06cd0",
-  measurementId: "G-6DY9L0WQWD"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase
