@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { db } from "../firebase";
 import {
@@ -16,7 +15,7 @@ export function useToken() {
   const [loading, setLoading] = useState(false);
 
   // ==========================================
-  // ADMIN LOGIN
+  // ADMIN LOGIN (kept for future use, not required now)
   // ==========================================
 
   const adminLogin = async (username, password) => {
@@ -35,25 +34,16 @@ export function useToken() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(
-          data.error || "Admin login failed"
-        );
+        throw new Error(data.error || "Admin login failed");
       }
 
-      localStorage.setItem(
-        "adminToken",
-        data.token
-      );
+      localStorage.setItem("adminToken", data.token);
 
       console.log("Admin login successful");
 
       return data;
     } catch (err) {
-      console.error(
-        "Admin login error:",
-        err
-      );
-
+      console.error("Admin login error:", err);
       throw err;
     }
   };
@@ -75,74 +65,50 @@ export function useToken() {
     setLoading(true);
 
     try {
-      const res = await fetch(
-        `${BACKEND_URL}/consent/issue-token`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            consentId:
-              "loan-underwriting-001",
-            fiWindowDays: 90,
-            maxUsage: 2,
-          }),
-        }
-      );
+      const res = await fetch(`${BACKEND_URL}/consent/issue-token`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          consentId: "loan-underwriting-001",
+          fiWindowDays: 90,
+          maxUsage: 2,
+        }),
+      });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(
-          data.error ||
-            "Token issue failed"
-        );
+        throw new Error(data.error || "Token issue failed");
       }
 
       // ======================================
       // SAVE TOKEN DETAILS TO FIREBASE
       // ======================================
 
-      await addDoc(
-        collection(db, "tokens"),
-        {
-          consentId:
-            "loan-underwriting-001",
-
-          fiWindowDays: 90,
-
-          maxUsage: 2,
-
-          status: "ISSUED",
-
-          createdAt:
-            serverTimestamp(),
-        }
-      );
+      await addDoc(collection(db, "tokens"), {
+        consentId: "loan-underwriting-001",
+        fiWindowDays: 90,
+        maxUsage: 2,
+        status: "ISSUED",
+        createdAt: serverTimestamp(),
+      });
 
       setToken(data.token);
 
       setLastResult({
         type: "info",
-        message:
-          "New consent token issued (max 2 uses allowed)",
+        message: "New consent token issued (max 2 uses allowed)",
       });
 
-      console.log(
-        "🔥 Token details saved to Firebase"
-      );
+      console.log("🔥 Token details saved to Firebase");
     } catch (err) {
-      console.error(
-        "Token issue error:",
-        err
-      );
+      console.error("Token issue error:", err);
 
       setLastResult({
         type: "error",
-        message:
-          err.message ||
-          "Backend not reachable.",
+        message: err.message || "Backend not reachable.",
       });
     } finally {
       setLoading(false);
@@ -157,8 +123,7 @@ export function useToken() {
     if (!token) {
       setLastResult({
         type: "error",
-        message:
-          "Issue a token first!",
+        message: "Issue a token first!",
       });
 
       return;
@@ -167,84 +132,41 @@ export function useToken() {
     setLoading(true);
 
     try {
-      // ======================================
-      // FETCH DATA
-      // ======================================
-
-      const res = await fetch(
-        `${BACKEND_URL}/fiu/fetch-data`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const res = await fetch(`${BACKEND_URL}/fiu/fetch-data`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const data = await res.json();
 
-      console.log(
-        "Fetch response:",
-        data
-      );
-
-      // ======================================
-      // SUCCESS
-      // ======================================
+      console.log("Fetch response:", data);
 
       if (res.ok) {
-        const usage =
-          data.context?.usageCount ??
-          "-";
-
-        const maxUsage =
-          data.context?.maxUsage ??
-          "-";
+        const usage = data.context?.usageCount ?? "-";
+        const maxUsage = data.context?.maxUsage ?? "-";
 
         setLastResult({
           type: "success",
-
-          message:
-            `Fetch succeeded (usage ${usage}/${maxUsage})`,
-
+          message: `Fetch succeeded (usage ${usage}/${maxUsage})`,
           data: data,
         });
-      }
-
-      // ======================================
-      // BLOCKED / REPLAY
-      // ======================================
-
-      else {
+      } else {
         setLastResult({
           type: "blocked",
-
-          message:
-            `${data.error || "Request blocked"} (${
-              data.action || "BLOCKED"
-            })`,
-
+          message: `${data.error || "Request blocked"} (${data.action || "BLOCKED"})`,
           data: data,
         });
       }
     } catch (err) {
-      console.error(
-        "Fetch data error:",
-        err
-      );
+      console.error("Fetch data error:", err);
 
       setLastResult({
         type: "error",
-
-        message:
-          "Backend not reachable.",
+        message: "Backend not reachable.",
       });
     } finally {
-      // ======================================
-      // IMPORTANT
-      // Loading ALWAYS stops here
-      // ======================================
-
       setLoading(false);
     }
 
@@ -254,88 +176,39 @@ export function useToken() {
     // ========================================
 
     refreshAuditLog().catch((err) => {
-      console.error(
-        "Audit refresh failed:",
-        err
-      );
+      console.error("Audit refresh failed:", err);
     });
   };
 
   // ==========================================
-  // REFRESH ADMIN AUDIT LOG
+  // REFRESH AUDIT LOG (backend is public, no auth needed)
   // ==========================================
 
   const refreshAuditLog = async () => {
     try {
-      const adminToken =
-        localStorage.getItem(
-          "adminToken"
-        );
-
-      if (!adminToken) {
-        console.warn(
-          "No admin token available"
-        );
-
-        return;
-      }
-
-      const res = await fetch(
-        `${BACKEND_URL}/admin/audit-log`,
-        {
-          method: "GET",
-
-          headers: {
-            Authorization:
-              `Bearer ${adminToken}`,
-          },
-
-          // Prevent request from hanging forever
-          signal:
-            AbortSignal.timeout(5000),
-        }
-      );
+      const res = await fetch(`${BACKEND_URL}/admin/audit-log`, {
+        method: "GET",
+        signal: AbortSignal.timeout(5000),
+      });
 
       if (!res.ok) {
-        const errorData =
-          await res
-            .json()
-            .catch(() => ({}));
-
-        console.warn(
-          "Audit log fetch failed:",
-          res.status,
-          errorData
-        );
-
+        const errorData = await res.json().catch(() => ({}));
+        console.warn("Audit log fetch failed:", res.status, errorData);
         return;
       }
 
-      const data =
-        await res.json();
+      const data = await res.json();
 
-      console.log(
-        "Audit log:",
-        data
-      );
+      console.log("Audit log:", data);
 
       if (!Array.isArray(data)) {
-        console.warn(
-          "Audit log response not an array:",
-          data
-        );
-
+        console.warn("Audit log response not an array:", data);
         return;
       }
 
-      setAuditLog(
-        [...data].reverse()
-      );
+      setAuditLog([...data].reverse());
     } catch (err) {
-      console.error(
-        "Audit log error:",
-        err
-      );
+      console.error("Audit log error:", err);
     }
   };
 
@@ -343,31 +216,20 @@ export function useToken() {
   // VERDICT COLOR
   // ==========================================
 
-  const verdictColor = (
-    verdict
-  ) => {
-    if (
-      verdict === "ALLOWED"
-    ) {
+  const verdictColor = (verdict) => {
+    if (verdict === "ALLOWED") {
       return "#22c55e";
     }
 
-    if (
-      verdict ===
-      "REPLAY_DETECTED"
-    ) {
+    if (verdict === "REPLAY_DETECTED") {
       return "#ef4444";
     }
 
-    if (
-      verdict === "ANOMALY"
-    ) {
+    if (verdict === "ANOMALY") {
       return "#f59e0b";
     }
 
-    if (
-      verdict === "REJECTED"
-    ) {
+    if (verdict === "REJECTED") {
       return "#ef4444";
     }
 
@@ -394,4 +256,3 @@ export function useToken() {
     verdictColor,
   };
 }
-

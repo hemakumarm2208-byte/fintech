@@ -18,8 +18,6 @@ const {
   getAuditLog,
 } = require("./utils/tokenStore");
 
-const adminAuth = require("./middleware/adminAuth");
-
 // ===============================
 // Firebase Admin SDK
 // ===============================
@@ -131,10 +129,10 @@ app.get("/fiu/fetch-data", replayDetector, (req, res) => {
 });
 
 // ===============================
-// Admin Audit Log
+// Admin Audit Log (public — no auth, hackathon demo)
 // ===============================
 
-app.get("/admin/audit-log", adminAuth, (req, res) => {
+app.get("/admin/audit-log", (req, res) => {
   try {
     const logs = getAuditLog();
 
