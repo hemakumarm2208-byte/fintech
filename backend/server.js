@@ -4,16 +4,21 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
+
 const { initializeApp, cert } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
 
 const {
   replayDetector,
   JWT_SECRET,
 } = require("./middleware/replayDetector");
 
-const adminAuth = require("./middleware/adminAuth");
+// IMPORTANT:
+// getAuditLog is from tokenStore.js
+const {
+  getAuditLog,
+} = require("./utils/tokenStore");
 
+const adminAuth = require("./middleware/adminAuth");
 
 // ===============================
 // Firebase Admin SDK
@@ -25,8 +30,6 @@ initializeApp({
   credential: cert(serviceAccount),
 });
 
-const db = getFirestore();
-
 // ===============================
 // Express App
 // ===============================
@@ -36,6 +39,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ===============================
+// Health Check
+// ===============================
+
+app.get("/", (req, res) => {
+  res.json({
+    message: "AA Token Replay Attack Detector backend is running",
+  });
+});
 
 // ===============================
 // Admin Login
@@ -70,7 +82,6 @@ app.post("/admin/login", (req, res) => {
   });
 });
 
-
 // ===============================
 // Issue Consent Token
 // ===============================
@@ -103,7 +114,6 @@ app.post("/consent/issue-token", (req, res) => {
   });
 });
 
-
 // ===============================
 // FIU Fetch Data
 // ===============================
@@ -111,45 +121,41 @@ app.post("/consent/issue-token", (req, res) => {
 app.get("/fiu/fetch-data", replayDetector, (req, res) => {
   res.json({
     message: "Data fetched successfully",
+
     context: req.replayContext,
+
     dummyData: {
       balance: 45210.5,
     },
   });
 });
 
-
 // ===============================
 // Admin Audit Log
 // ===============================
 
-app.get("/admin/audit-log", adminAuth, async (req, res) => {
+app.get("/admin/audit-log", adminAuth, (req, res) => {
   try {
-    const snapshot = await db
-      .collection("auditLogs")
-      .orderBy("timestamp", "desc")
-      .get();
-
-    const logs = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const logs = getAuditLog();
 
     res.json(logs);
   } catch (error) {
     console.error("Audit log error:", error);
 
     res.status(500).json({
-      message: "Failed to fetch audit logs",
+      error: "Failed to fetch audit logs",
     });
   }
 });
-
 
 // ===============================
 // Start Server
 // ===============================
 
 app.listen(3000, () => {
-  console.log("Backend running on http://localhost:3000");
+  console.log("=================================");
+  console.log("Backend running on port 3000");
+  console.log("Admin login: POST /admin/login");
+  console.log("Audit log: GET /admin/audit-log");
+  console.log("=================================");
 });

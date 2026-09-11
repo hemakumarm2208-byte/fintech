@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { db } from "../firebase";
 import {
@@ -14,6 +15,62 @@ export function useToken() {
   const [lastResult, setLastResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // ==========================================
+  // ADMIN LOGIN
+  // ==========================================
+
+  const adminLogin = async (username, password) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/admin/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          data.error || "Admin login failed"
+        );
+      }
+
+      localStorage.setItem(
+        "adminToken",
+        data.token
+      );
+
+      console.log("Admin login successful");
+
+      return data;
+    } catch (err) {
+      console.error(
+        "Admin login error:",
+        err
+      );
+
+      throw err;
+    }
+  };
+
+  // ==========================================
+  // ADMIN LOGOUT
+  // ==========================================
+
+  const adminLogout = () => {
+    localStorage.removeItem("adminToken");
+    setAuditLog([]);
+  };
+
+  // ==========================================
+  // ISSUE CONSENT TOKEN
+  // ==========================================
+
   const issueToken = async () => {
     setLoading(true);
 
@@ -26,7 +83,8 @@ export function useToken() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            consentId: "loan-underwriting-001",
+            consentId:
+              "loan-underwriting-001",
             fiWindowDays: 90,
             maxUsage: 2,
           }),
@@ -36,17 +94,32 @@ export function useToken() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Token issue failed");
+        throw new Error(
+          data.error ||
+            "Token issue failed"
+        );
       }
 
-      // Save token metadata to Firebase
-      await addDoc(collection(db, "tokens"), {
-        consentId: "loan-underwriting-001",
-        fiWindowDays: 90,
-        maxUsage: 2,
-        status: "ISSUED",
-        createdAt: serverTimestamp(),
-      });
+      // ======================================
+      // SAVE TOKEN DETAILS TO FIREBASE
+      // ======================================
+
+      await addDoc(
+        collection(db, "tokens"),
+        {
+          consentId:
+            "loan-underwriting-001",
+
+          fiWindowDays: 90,
+
+          maxUsage: 2,
+
+          status: "ISSUED",
+
+          createdAt:
+            serverTimestamp(),
+        }
+      );
 
       setToken(data.token);
 
@@ -55,34 +128,53 @@ export function useToken() {
         message:
           "New consent token issued (max 2 uses allowed)",
       });
+
+      console.log(
+        "🔥 Token details saved to Firebase"
+      );
     } catch (err) {
-      console.error(err);
+      console.error(
+        "Token issue error:",
+        err
+      );
 
       setLastResult({
         type: "error",
         message:
-          err.message || "Backend not reachable.",
+          err.message ||
+          "Backend not reachable.",
       });
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
+
+  // ==========================================
+  // FETCH DATA USING CONSENT TOKEN
+  // ==========================================
 
   const callFetchData = async () => {
     if (!token) {
       setLastResult({
         type: "error",
-        message: "Issue a token first!",
+        message:
+          "Issue a token first!",
       });
+
       return;
     }
 
     setLoading(true);
 
     try {
+      // ======================================
+      // FETCH DATA
+      // ======================================
+
       const res = await fetch(
         `${BACKEND_URL}/fiu/fetch-data`,
         {
+          method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -91,75 +183,154 @@ export function useToken() {
 
       const data = await res.json();
 
+      console.log(
+        "Fetch response:",
+        data
+      );
+
+      // ======================================
+      // SUCCESS
+      // ======================================
+
       if (res.ok) {
+        const usage =
+          data.context?.usageCount ??
+          "-";
+
+        const maxUsage =
+          data.context?.maxUsage ??
+          "-";
+
         setLastResult({
           type: "success",
-          message: `Fetch succeeded (usage ${data.context.usageCount}/${data.context.maxUsage})`,
+
+          message:
+            `Fetch succeeded (usage ${usage}/${maxUsage})`,
+
+          data: data,
         });
-      } else {
+      }
+
+      // ======================================
+      // BLOCKED / REPLAY
+      // ======================================
+
+      else {
         setLastResult({
           type: "blocked",
-          message: `${data.error} (${data.action})`,
+
+          message:
+            `${data.error || "Request blocked"} (${
+              data.action || "BLOCKED"
+            })`,
+
+          data: data,
         });
       }
     } catch (err) {
-      console.error(err);
+      console.error(
+        "Fetch data error:",
+        err
+      );
 
       setLastResult({
         type: "error",
-        message: "Backend not reachable.",
+
+        message:
+          "Backend not reachable.",
       });
+    } finally {
+      // ======================================
+      // IMPORTANT
+      // Loading ALWAYS stops here
+      // ======================================
+
+      setLoading(false);
     }
 
-    await refreshAuditLog();
-    setLoading(false);
+    // ========================================
+    // REFRESH AUDIT LOG
+    // DON'T BLOCK FETCH LOADING
+    // ========================================
+
+    refreshAuditLog().catch((err) => {
+      console.error(
+        "Audit refresh failed:",
+        err
+      );
+    });
   };
 
-  const ALLOWED_VERDICTS = [
-    "ALLOWED",
-    "REPLAY_DETECTED",
-    "ANOMALY",
-  ];
+  // ==========================================
+  // REFRESH ADMIN AUDIT LOG
+  // ==========================================
 
   const refreshAuditLog = async () => {
     try {
+      const adminToken =
+        localStorage.getItem(
+          "adminToken"
+        );
+
+      if (!adminToken) {
+        console.warn(
+          "No admin token available"
+        );
+
+        return;
+      }
+
       const res = await fetch(
-        `${BACKEND_URL}/admin/audit-log`
+        `${BACKEND_URL}/admin/audit-log`,
+        {
+          method: "GET",
+
+          headers: {
+            Authorization:
+              `Bearer ${adminToken}`,
+          },
+
+          // Prevent request from hanging forever
+          signal:
+            AbortSignal.timeout(5000),
+        }
       );
 
-      const data = await res.json();
+      if (!res.ok) {
+        const errorData =
+          await res
+            .json()
+            .catch(() => ({}));
 
-      // Show audit logs in UI
-      setAuditLog([...data].reverse());
+        console.warn(
+          "Audit log fetch failed:",
+          res.status,
+          errorData
+        );
 
-      // Save latest audit log to Firebase
-      if (data.length > 0) {
-        const latestLog = data[data.length - 1];
-
-        if (
-          ALLOWED_VERDICTS.includes(
-            latestLog.verdict
-          )
-        ) {
-          await addDoc(collection(db, "auditLogs"), {
-            verdict: latestLog.verdict,
-            jti: latestLog.jti || null,
-            ip: latestLog.ip || null,
-            reason: latestLog.reason || null,
-            action: latestLog.action || null,
-            createdAt: serverTimestamp(),
-          });
-
-          console.log(
-            "Audit log saved to Firebase"
-          );
-        } else {
-          console.warn(
-            "Skipped Firebase save — unknown verdict:",
-            latestLog.verdict
-          );
-        }
+        return;
       }
+
+      const data =
+        await res.json();
+
+      console.log(
+        "Audit log:",
+        data
+      );
+
+      if (!Array.isArray(data)) {
+        console.warn(
+          "Audit log response not an array:",
+          data
+        );
+
+        return;
+      }
+
+      setAuditLog(
+        [...data].reverse()
+      );
     } catch (err) {
       console.error(
         "Audit log error:",
@@ -168,26 +339,59 @@ export function useToken() {
     }
   };
 
-  const verdictColor = (verdict) => {
-    if (verdict === "ALLOWED")
+  // ==========================================
+  // VERDICT COLOR
+  // ==========================================
+
+  const verdictColor = (
+    verdict
+  ) => {
+    if (
+      verdict === "ALLOWED"
+    ) {
       return "#22c55e";
+    }
 
-    if (verdict === "REPLAY_DETECTED")
+    if (
+      verdict ===
+      "REPLAY_DETECTED"
+    ) {
       return "#ef4444";
+    }
 
-    if (verdict === "ANOMALY")
+    if (
+      verdict === "ANOMALY"
+    ) {
       return "#f59e0b";
+    }
+
+    if (
+      verdict === "REJECTED"
+    ) {
+      return "#ef4444";
+    }
 
     return "#94a3b8";
   };
+
+  // ==========================================
+  // RETURN
+  // ==========================================
 
   return {
     token,
     auditLog,
     lastResult,
     loading,
+
     issueToken,
     callFetchData,
+    refreshAuditLog,
+
+    adminLogin,
+    adminLogout,
+
     verdictColor,
   };
 }
+
